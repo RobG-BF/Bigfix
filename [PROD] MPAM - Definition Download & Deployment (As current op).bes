@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BES xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="BES.xsd">
+	<Fixlet>
+		<Title><![CDATA[[PROD] MPAM - Definition Download & Deployment (As current op)]]></Title>
+		<Description><![CDATA[<LABEL for=secret>
+<P>This fixlet will manage the download of current MPAM files for SCEP/Defender then update and deploy the fixlet to update endpoints that have out of date definitions.</P>
+<P>This fixlet uses the current BES console operator passed as "secret" input parameters then uses the iem.exe REST API client tool so it is only relevant on the main BES server. Clients will not report relevant for this fixlet.</LABEL></P>
+<P><LABEL for=secret>Enter your BES password</LABEL>&nbsp;<INPUT id=secret type=password name=secret> <script>
+			document.body.ontakeaction = function() {
+				var theSecret = document.getElementById( "secret" ).value;
+				TakeSecureFixletAction( Relevance('id of current fixlet'), Relevance('id of current bes site'), "Action1", {}, { secret: theSecret, secret2: Relevance('name of current console user') } );
+				return false;
+			}
+			</script> </P>
+<P>Ensure you provide the password for your current operator before taking the fixlet action.</P>
+<P>Notes</P>
+<UL>
+<LI>Download x64 and x86 updaters 
+<LI>Get size and sha1 of downloaded files&nbsp; 
+<LI>Update content in the existing fixlet using iem.exe 
+<LI>Deploy a new action to all relevant endpoints </LI></UL>]]></Description>
+		<Relevance>exists main gather service</Relevance>
+		<Category></Category>
+		<Source>Internal</Source>
+		<SourceID></SourceID>
+		<SourceReleaseDate>2017-08-06</SourceReleaseDate>
+		<SourceSeverity></SourceSeverity>
+		<CVENames></CVENames>
+		<SANSID></SANSID>
+		<MIMEField>
+			<Name>x-fixlet-modification-time</Name>
+			<Value>Mon, 23 Aug 2021 17:26:49 +0000</Value>
+		</MIMEField>
+		<Domain>BESC</Domain>
+		<DefaultAction ID="Action1">
+			<Description>
+				<PreLink>Click </PreLink>
+				<Link>here</Link>
+				<PostLink> to deploy this action.</PostLink>
+			</Description>
+			<ActionScript MIMEType="application/x-Fixlet-Windows-Shell">// Change this to match the fixlet ID you need to update
+parameter "fixletid" = "4259"
+parameter "besserver" = "{dns name}"
+parameter "folder" = "{value of setting "_BESRelay_HTTPServer_ServerRootPath" of client &amp; "Uploads\MPAM"}"
+if{not exists folder (parameter "folder")}
+	folder create "{parameter "folder"}"
+endif
+
+// Download x86 version, copy it and get sha1 and size
+download now http://download.microsoft.com/download/DefinitionUpdates/mpam-fe.exe
+delete "{parameter "folder"}\mpam-fe.exe"
+copy __download\mpam-fe.exe "{parameter "folder"}\mpam-fe.exe"
+parameter "mpamx86sha1" = "{sha1 of file (parameter "folder" &amp; "\mpam-fe.exe")}"
+parameter "mpamx86size" = "{size of file (parameter "folder" &amp; "\mpam-fe.exe")}"
+
+// Download x64 version, copy it and get sha1 and size
+download now http://download.microsoft.com/download/DefinitionUpdates/mpam-fex64.exe
+delete "{parameter "folder"}\mpam-fex64.exe"
+copy __download\mpam-fex64.exe "{parameter "folder"}\mpam-fex64.exe"
+parameter "mpamx64sha1" = "{sha1 of file (parameter "folder" &amp; "\mpam-fex64.exe")}"
+parameter "mpamx64size" = "{size of file (parameter "folder" &amp; "\mpam-fex64.exe")}"
+
+// Build XML for fixlet
+createfile until EOF
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;BES xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="BES.xsd"&gt;
+	&lt;Fixlet&gt;
+		&lt;Title&gt;[PROD] MPAM - Definition Age &gt;= 7 days ({(year of it as string &amp; "" &amp; month of it as two digits &amp; "" &amp; day_of_month of it as two digits) of current date})&lt;/Title&gt;
+		&lt;Description&gt;&lt;![CDATA[&lt;P&gt;Bigfix has detected that System Centre Endpoint Protection (SCEP) or Windows Defender is using outdated anti-malware definitions to scan relevant computers. Outdated signatures reduce protection against the newest malware programs. To increase protection for affected computers, use this Fixlet to update to the newest threat signatures.&lt;/P&gt;
+&lt;P&gt;This fixlet will update x86 OS using the x86 updater and x64 OS using the x64 updater. It will not cater for x64 OS using an x86 product as this is out of scope.&lt;/P&gt;&lt;P&gt;This fixlet is updated by fixlet ID (TBA)&lt;/P&gt;]]&gt;&lt;/Description&gt;
+		&lt;Relevance&gt;(exists service "msmpsvc") OR (exists service "windefend")&lt;/Relevance&gt;
+		&lt;Relevance&gt;(exists running applications "msmpeng.exe") OR (exists running applications "msascuil.exe")&lt;/Relevance&gt;
+		&lt;Relevance&gt;exist key "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Microsoft Security Client" whose (value "ProductName" of it as string starts with "SCEP") of native registry&lt;/Relevance&gt;
+		&lt;Relevance&gt;&lt;![CDATA[string value of select "AntispywareSignatureAge from AntimalwareHealthStatus" of wmi "root\Microsoft\SecurityClient" as integer &gt;= 7]]&gt;&lt;/Relevance&gt;
+		&lt;Category&gt;MPAM Updates&lt;/Category&gt;
+		&lt;DownloadSize&gt;{parameter "mpamx64size"}&lt;/DownloadSize&gt;
+		&lt;Source&gt;Internal&lt;/Source&gt;
+		&lt;SourceID&gt;&lt;/SourceID&gt;
+		&lt;SourceSeverity&gt;Important&lt;/SourceSeverity&gt;
+		&lt;CVENames&gt;&lt;/CVENames&gt;
+		&lt;SANSID&gt;&lt;/SANSID&gt;
+		&lt;MIMEField&gt;
+			&lt;Name&gt;x-fixlet-modification-time&lt;/Name&gt;
+			&lt;Value&gt;{now}&lt;/Value&gt;
+		&lt;/MIMEField&gt;
+		&lt;Domain&gt;EPP &lt;/Domain&gt;
+		&lt;DefaultAction ID="Action1"&gt;
+			&lt;Description&gt;
+				&lt;PreLink&gt;Click &lt;/PreLink&gt;
+				&lt;Link&gt;here&lt;/Link&gt;
+				&lt;PostLink&gt; to deploy this action.&lt;/PostLink&gt;
+			&lt;/Description&gt;
+			&lt;ActionScript MIMEType="application/x-Fixlet-Windows-Shell"&gt;//Download architechture specific definitions file
+if{{x64 of operating system}
+	prefetch mpam-fex64.exe sha1:{parameter "mpamx64sha1"} size:{parameter "mpamx64size"} http://{parameter "besserver"}:52311/Uploads/MPAM/mpam-feX64.exe
+else
+	prefetch mpam-fe.exe sha1:{parameter "mpamx86sha1"} size:{parameter "mpamx86size"} http://{parameter "besserver"}:52311/Uploads/MPAM/mpam-fe.exe
+endif
+
+//Reset AV definitions
+if{{exists service "windefend"}
+	waithidden "{{preceding text of last "\" of pathnames of running applications "msascuil.exe" &amp;amp; "\MpCmdRun.exe"}" -removedefinitions -all
+else
+	waithidden "{{preceding text of last "\" of pathnames of running applications "MsMpEng.exe" &amp;amp; "\MpCmdRun.exe"}" -removedefinitions -all
+endif
+
+
+//Execute architechture specific definitions file
+if{{x64 of operating system}
+	waithidden __Download\mpam-feX64.exe
+else
+	waithidden __Download\mpam-fe.exe
+endif
+
+//Create/Increment a tracking key
+regset "[HKEY_LOCAL_MACHINE\SOFTWARE\Company\Bigfix]" "AVMPAMUpdateCount"="{{value "AVMPAMUpdateCount" of key "HKEY_LOCAL_MACHINE\SOFTWARE\Company\Bigfix" of registry as integer | 0 + 1}"
+
+&lt;/ActionScript&gt;
+			&lt;SuccessCriteria Option="OriginalRelevance"&gt;&lt;/SuccessCriteria&gt;
+			&lt;Settings&gt;
+				&lt;PreActionShowUI&gt;false&lt;/PreActionShowUI&gt;
+				&lt;HasRunningMessage&gt;false&lt;/HasRunningMessage&gt;
+				&lt;HasTimeRange&gt;false&lt;/HasTimeRange&gt;
+				&lt;HasStartTime&gt;false&lt;/HasStartTime&gt;
+				&lt;HasEndTime&gt;true&lt;/HasEndTime&gt;
+				&lt;EndDateTimeLocalOffset&gt;P5D&lt;/EndDateTimeLocalOffset&gt;
+				&lt;HasDayOfWeekConstraint&gt;false&lt;/HasDayOfWeekConstraint&gt;
+				&lt;UseUTCTime&gt;false&lt;/UseUTCTime&gt;
+				&lt;ActiveUserRequirement&gt;NoRequirement&lt;/ActiveUserRequirement&gt;
+				&lt;ActiveUserType&gt;AllUsers&lt;/ActiveUserType&gt;
+				&lt;HasWhose&gt;false&lt;/HasWhose&gt;
+				&lt;PreActionCacheDownload&gt;false&lt;/PreActionCacheDownload&gt;
+				&lt;Reapply&gt;false&lt;/Reapply&gt;
+				&lt;HasReapplyLimit&gt;false&lt;/HasReapplyLimit&gt;
+				&lt;HasReapplyInterval&gt;false&lt;/HasReapplyInterval&gt;
+				&lt;HasRetry&gt;true&lt;/HasRetry&gt;
+				&lt;RetryCount&gt;1&lt;/RetryCount&gt;
+				&lt;RetryWait Behavior="WaitForReboot"&gt;P1D&lt;/RetryWait&gt;
+				&lt;HasTemporalDistribution&gt;false&lt;/HasTemporalDistribution&gt;
+				&lt;ContinueOnErrors&gt;true&lt;/ContinueOnErrors&gt;
+				&lt;PostActionBehavior Behavior="Nothing"&gt;&lt;/PostActionBehavior&gt;
+				&lt;IsOffer&gt;false&lt;/IsOffer&gt;
+			&lt;/Settings&gt;
+			&lt;SettingsLocks&gt;
+				&lt;ActionUITitle&gt;false&lt;/ActionUITitle&gt;
+				&lt;PreActionShowUI&gt;false&lt;/PreActionShowUI&gt;
+				&lt;PreAction&gt;
+					&lt;Text&gt;false&lt;/Text&gt;
+					&lt;AskToSaveWork&gt;false&lt;/AskToSaveWork&gt;
+					&lt;ShowActionButton&gt;false&lt;/ShowActionButton&gt;
+					&lt;ShowCancelButton&gt;false&lt;/ShowCancelButton&gt;
+					&lt;DeadlineBehavior&gt;false&lt;/DeadlineBehavior&gt;
+					&lt;ShowConfirmation&gt;false&lt;/ShowConfirmation&gt;
+				&lt;/PreAction&gt;
+				&lt;HasRunningMessage&gt;false&lt;/HasRunningMessage&gt;
+				&lt;RunningMessage&gt;
+					&lt;Text&gt;false&lt;/Text&gt;
+				&lt;/RunningMessage&gt;
+				&lt;TimeRange&gt;false&lt;/TimeRange&gt;
+				&lt;StartDateTimeOffset&gt;false&lt;/StartDateTimeOffset&gt;
+				&lt;EndDateTimeOffset&gt;false&lt;/EndDateTimeOffset&gt;
+				&lt;DayOfWeekConstraint&gt;false&lt;/DayOfWeekConstraint&gt;
+				&lt;ActiveUserRequirement&gt;false&lt;/ActiveUserRequirement&gt;
+				&lt;ActiveUserType&gt;false&lt;/ActiveUserType&gt;
+				&lt;Whose&gt;false&lt;/Whose&gt;
+				&lt;PreActionCacheDownload&gt;false&lt;/PreActionCacheDownload&gt;
+				&lt;Reapply&gt;false&lt;/Reapply&gt;
+				&lt;ReapplyLimit&gt;false&lt;/ReapplyLimit&gt;
+				&lt;RetryCount&gt;false&lt;/RetryCount&gt;
+				&lt;RetryWait&gt;false&lt;/RetryWait&gt;
+				&lt;TemporalDistribution&gt;false&lt;/TemporalDistribution&gt;
+				&lt;ContinueOnErrors&gt;false&lt;/ContinueOnErrors&gt;
+				&lt;PostActionBehavior&gt;
+					&lt;Behavior&gt;false&lt;/Behavior&gt;
+					&lt;AllowCancel&gt;false&lt;/AllowCancel&gt;
+					&lt;Deadline&gt;false&lt;/Deadline&gt;
+					&lt;Title&gt;false&lt;/Title&gt;
+					&lt;Text&gt;false&lt;/Text&gt;
+				&lt;/PostActionBehavior&gt;
+				&lt;IsOffer&gt;false&lt;/IsOffer&gt;
+				&lt;AnnounceOffer&gt;false&lt;/AnnounceOffer&gt;
+				&lt;OfferCategory&gt;false&lt;/OfferCategory&gt;
+				&lt;OfferDescriptionHTML&gt;false&lt;/OfferDescriptionHTML&gt;
+			&lt;/SettingsLocks&gt;
+		&lt;/DefaultAction&gt;
+	&lt;/Fixlet&gt;
+&lt;/BES&gt;
+EOF
+
+delete "{parameter "folder"}\fixlet.xml"
+copy __createfile "{parameter "folder"}\fixlet.xml"
+
+// Build XML to deploy a new action from the fixlet
+createfile until EOF
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;BES xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="BES.xsd"&gt;
+ &lt;SourcedFixletAction&gt;
+   &lt;SourceFixlet&gt;
+     &lt;Sitename&gt;IT Support&lt;/Sitename&gt;
+     &lt;FixletID&gt;{parameter "fixletid"}&lt;/FixletID&gt;
+     &lt;Action&gt;Action1&lt;/Action&gt;
+   &lt;/SourceFixlet&gt;
+   &lt;Target&gt;
+     &lt;AllComputers&gt;true&lt;/AllComputers&gt;
+   &lt;/Target&gt;
+ &lt;/SourcedFixletAction&gt;
+&lt;/BES&gt;
+EOF
+
+delete "{parameter "folder"}\action.xml"
+copy __createfile "{parameter "folder"}\action.xml"
+
+
+// Update the fixlet using IEM.exe
+parameter "iem" = "{parent folder of folder (value of setting "_BESRelay_HTTPServer_ServerRootPath" of client) as string &amp; "\IEM CLI\iem.exe"}" 
+wait cmd.exe /c ""{parameter "iem"}" login -q --server={parameter "besserver"} --user={parameter "secret2" of action} --password={parameter "secret" of action} --masthead="{pathname of folder of main gather service &amp; "\actionsite.afxm"}""
+wait cmd.exe /c ""{parameter "iem"}" PUT "{parameter "folder"}\fixlet.xml" /fixlet/custom/IT%20Support/{parameter "fixletid"} -q"
+wait cmd.exe /c ""{parameter "iem"}" POST "{parameter "folder"}\action.xml" actions -q"</ActionScript>
+			<SuccessCriteria Option="RunToCompletion"></SuccessCriteria>
+			<Settings>
+				<PreActionShowUI>false</PreActionShowUI>
+				<HasRunningMessage>false</HasRunningMessage>
+				<HasTimeRange>false</HasTimeRange>
+				<HasStartTime>false</HasStartTime>
+				<HasEndTime>true</HasEndTime>
+				<EndDateTimeLocalOffset>PT1H</EndDateTimeLocalOffset>
+				<HasDayOfWeekConstraint>false</HasDayOfWeekConstraint>
+				<UseUTCTime>false</UseUTCTime>
+				<ActiveUserRequirement>NoRequirement</ActiveUserRequirement>
+				<ActiveUserType>AllUsers</ActiveUserType>
+				<HasWhose>false</HasWhose>
+				<PreActionCacheDownload>false</PreActionCacheDownload>
+				<Reapply>false</Reapply>
+				<HasReapplyLimit>true</HasReapplyLimit>
+				<ReapplyLimit>3</ReapplyLimit>
+				<HasReapplyInterval>false</HasReapplyInterval>
+				<HasRetry>false</HasRetry>
+				<HasTemporalDistribution>false</HasTemporalDistribution>
+				<ContinueOnErrors>true</ContinueOnErrors>
+				<PostActionBehavior Behavior="Nothing"></PostActionBehavior>
+				<IsOffer>false</IsOffer>
+			</Settings>
+			<SettingsLocks>
+				<ActionUITitle>false</ActionUITitle>
+				<PreActionShowUI>false</PreActionShowUI>
+				<PreAction>
+					<Text>false</Text>
+					<AskToSaveWork>false</AskToSaveWork>
+					<ShowActionButton>false</ShowActionButton>
+					<ShowCancelButton>false</ShowCancelButton>
+					<DeadlineBehavior>false</DeadlineBehavior>
+					<ShowConfirmation>false</ShowConfirmation>
+				</PreAction>
+				<HasRunningMessage>false</HasRunningMessage>
+				<RunningMessage>
+					<Text>false</Text>
+				</RunningMessage>
+				<TimeRange>false</TimeRange>
+				<StartDateTimeOffset>false</StartDateTimeOffset>
+				<EndDateTimeOffset>false</EndDateTimeOffset>
+				<DayOfWeekConstraint>false</DayOfWeekConstraint>
+				<ActiveUserRequirement>false</ActiveUserRequirement>
+				<ActiveUserType>false</ActiveUserType>
+				<Whose>false</Whose>
+				<PreActionCacheDownload>false</PreActionCacheDownload>
+				<Reapply>false</Reapply>
+				<ReapplyLimit>false</ReapplyLimit>
+				<RetryCount>false</RetryCount>
+				<RetryWait>false</RetryWait>
+				<TemporalDistribution>false</TemporalDistribution>
+				<ContinueOnErrors>false</ContinueOnErrors>
+				<PostActionBehavior>
+					<Behavior>false</Behavior>
+					<AllowCancel>false</AllowCancel>
+					<Deadline>false</Deadline>
+					<Title>false</Title>
+					<Text>false</Text>
+				</PostActionBehavior>
+				<IsOffer>false</IsOffer>
+				<AnnounceOffer>false</AnnounceOffer>
+				<OfferCategory>false</OfferCategory>
+				<OfferDescriptionHTML>false</OfferDescriptionHTML>
+			</SettingsLocks>
+		</DefaultAction>
+	</Fixlet>
+</BES>
