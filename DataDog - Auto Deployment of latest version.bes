@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BES xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="BES.xsd">
+	<Task>
+		<Title>DataDog - Auto Deployment of latest version</Title>
+		<Description><![CDATA[<LABEL for=secret>
+<P>This fixlet runs on the main sever, downloads the JSON catalog from <A href="https://ddagent-windows-stable.s3.amazonaws.com/installers_v2.json">https://ddagent-windows-stable.s3.amazonaws.com/installers_v2.json</A>, parse the JSON for the latest version then modifiesand deploys a fixlet with the latest version.</P>
+<P>The fixlet uses the current BES console operator passed as "secret" input parameters then uses the iem.exe REST API client tool so it is only relevant on the main BES server. Clients will not report relevant for this fixlet.</LABEL></P>
+<P><LABEL for=secret>Enter your BES password</LABEL>&nbsp;<INPUT id=secret type=password name=secret> <script>
+			document.body.ontakeaction = function() {
+				var theSecret = document.getElementById( "secret" ).value;
+				TakeSecureFixletAction( Relevance('id of current fixlet'), Relevance('id of current bes site'), "Action1", {}, { secret: theSecret, secret2: Relevance('name of current console user') } );
+				return false;
+			}
+			</script> </P>
+<P>Ensure you provide the password for your current operator before taking the fixlet action.</P>]]></Description>
+		<Relevance>exists main gather service</Relevance>
+		<Category></Category>
+		<Source>Internal</Source>
+		<SourceID></SourceID>
+		<SourceReleaseDate>2024-02-03</SourceReleaseDate>
+		<SourceSeverity></SourceSeverity>
+		<CVENames></CVENames>
+		<SANSID></SANSID>
+		<MIMEField>
+			<Name>x-fixlet-modification-time</Name>
+			<Value>Sun, 04 Feb 2024 14:41:18 +0000</Value>
+		</MIMEField>
+		<Domain>BESC</Domain>
+		<DefaultAction ID="Action1">
+			<Description>
+				<PreLink>Click </PreLink>
+				<Link>here</Link>
+				<PostLink> to deploy this action.</PostLink>
+			</Description>
+			<ActionScript MIMEType="application/x-Fixlet-Windows-Shell">parameter "fixletid" = "925"
+parameter "besserver" = "{dns name}"
+parameter "folder" = "{value of setting "_BESRelay_HTTPServer_ServerRootPath" of client &amp; "Uploads\DataDog"}"
+if{not exists folder (parameter "folder")}
+	folder create "{parameter "folder"}"
+endif
+
+// Download the JSON list of all version and download links
+download now https://ddagent-windows-stable.s3.amazonaws.com/installers_v2.json
+delete "{(parameter "folder") &amp; "\installers_v2.json"}"
+copy __Download\installers_v2.json "{(parameter "folder") &amp; "\installers_v2.json"}"
+
+// Append the latest version and URL to  a file that will be used to update the fixlet that is deployed to endpoints
+appendfile {(name of it as string &amp; "=" &amp; value of keys of values of keys of values of it as string) of (keys ((following text of last "##" of concatenation "##" of (names of keys of value of key "datadog-agent" of it) as string) of json of file ((parameter "folder") &amp; "\installers_v2.json")) of value of key "datadog-agent" of json of file ((parameter "folder") &amp; "\installers_v2.json"))}
+delete "{(parameter "folder") &amp; "\latestversion.txt"}"
+copy __appendfile "{(parameter "folder") &amp; "\latestversion.txt"}"
+
+// Parse the latest version and store as parameters
+parameter "version" = "{preceding text of first "-" of preceding text of first "=" of line 1 of file (parameter "folder" &amp; "\latestversion.txt") | "&lt;data missing&gt;"}"
+parameter "url" = "{following text of first "=" of line 1 of file (parameter "folder" &amp; "\latestversion.txt") | "&lt;data missing&gt;"}"
+parameter "filename" = "{following text of last "/" of line 1 of file (parameter "folder" &amp; "\latestversion.txt") | "&lt;data missing&gt;"}"
+
+// Only download binary and refresh fixlet is lest version is newer than current
+if {not exists file (parameter "folder" &amp; "\currentversion.txt") whose (line 1 of it starts with (parameter "version"))} 
+
+// Download the current version binary, cache on the main server and parse the file data needed to build the action.
+download now {parameter "url"}
+delete "{(parameter "folder") &amp; "\" &amp; (parameter "filename")}"
+copy __Download\{(parameter "filename")} "{(parameter "folder") &amp; "\" &amp; (parameter "filename")}"
+parameter "filesize" = "{size of file ((parameter "folder") &amp; "\" &amp; (parameter "filename"))}"
+parameter "filesha1" = "{sha1 of file ((parameter "folder") &amp; "\" &amp; (parameter "filename"))}"
+parameter "filesha256" = "{sha256 of file ((parameter "folder") &amp; "\" &amp; (parameter "filename"))}"
+
+// Build the fixlet XML
+createfile until EOF
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;BES xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="BES.xsd"&gt;
+	&lt;Fixlet&gt;
+		&lt;Title&gt;Update: Datadog Agent {parameter "version"} - Windows (x64)&lt;/Title&gt;
+		&lt;Description&gt;&lt;![CDATA[&lt;P&gt;This task will download and install "Datadog Agent v{parameter "version"}" package onto selected endpoints.&lt;/P&gt;&lt;P&gt;This fixlet is updated automatically by fixlet ID (insert you master fixlet ID here)&lt;/P&gt;]]&gt;&lt;/Description&gt;
+		&lt;Relevance&gt;&lt;![CDATA[(windows of it and x64 of it) of operating system]]&gt;&lt;/Relevance&gt;
+		&lt;Relevance&gt;&lt;![CDATA[not exists service "datadogagent" whose (version of it &gt;= "{parameter "version"}")]]&gt;&lt;/Relevance&gt;
+		&lt;Category&gt;&lt;/Category&gt;
+		&lt;DownloadSize&gt;{parameter "filesize"}&lt;/DownloadSize&gt;
+		&lt;Source&gt;Internal&lt;/Source&gt;
+		&lt;SourceID&gt;&lt;/SourceID&gt;
+		&lt;SourceSeverity&gt;Important&lt;/SourceSeverity&gt;
+		&lt;CVENames&gt;&lt;/CVENames&gt;
+		&lt;SANSID&gt;&lt;/SANSID&gt;
+		&lt;MIMEField&gt;
+			&lt;Name&gt;x-fixlet-modification-time&lt;/Name&gt;
+			&lt;Value&gt;{now}&lt;/Value&gt;
+		&lt;/MIMEField&gt;
+		&lt;Domain&gt;BESC&lt;/Domain&gt;
+		&lt;DefaultAction ID="Action1"&gt;
+			&lt;Description&gt;
+				&lt;PreLink&gt;Click &lt;/PreLink&gt;
+				&lt;Link&gt;here&lt;/Link&gt;
+				&lt;PostLink&gt; to deploy DataDog Agent v{parameter "version"}.&lt;/PostLink&gt;
+			&lt;/Description&gt;
+			&lt;ActionScript MIMEType="application/x-Fixlet-Windows-Shell"&gt;&lt;![CDATA[
+//Download agent installer
+prefetch datadog-agent-x86_64.msi sha1:{parameter "filesha1"} size:{parameter "filesize"} {parameter "url"} sha256:{parameter "filesha256"}
+
+waithidden msiexec.exe /i __Download\datadog-agent-x86_64.msi /qn /norestart
+]]&gt;
+&lt;/ActionScript&gt;
+			&lt;SuccessCriteria Option="OriginalRelevance"&gt;&lt;/SuccessCriteria&gt;
+			&lt;Settings&gt;
+				&lt;PreActionShowUI&gt;false&lt;/PreActionShowUI&gt;
+				&lt;HasRunningMessage&gt;false&lt;/HasRunningMessage&gt;
+				&lt;HasTimeRange&gt;false&lt;/HasTimeRange&gt;
+				&lt;HasStartTime&gt;false&lt;/HasStartTime&gt;
+				&lt;HasEndTime&gt;true&lt;/HasEndTime&gt;
+				&lt;EndDateTimeLocalOffset&gt;P7D&lt;/EndDateTimeLocalOffset&gt;
+				&lt;HasDayOfWeekConstraint&gt;false&lt;/HasDayOfWeekConstraint&gt;
+				&lt;UseUTCTime&gt;false&lt;/UseUTCTime&gt;
+				&lt;ActiveUserRequirement&gt;NoRequirement&lt;/ActiveUserRequirement&gt;
+				&lt;ActiveUserType&gt;AllUsers&lt;/ActiveUserType&gt;
+				&lt;HasWhose&gt;false&lt;/HasWhose&gt;
+				&lt;PreActionCacheDownload&gt;false&lt;/PreActionCacheDownload&gt;
+				&lt;Reapply&gt;false&lt;/Reapply&gt;
+				&lt;HasReapplyLimit&gt;false&lt;/HasReapplyLimit&gt;
+				&lt;HasReapplyInterval&gt;false&lt;/HasReapplyInterval&gt;
+				&lt;HasRetry&gt;true&lt;/HasRetry&gt;
+				&lt;RetryCount&gt;1&lt;/RetryCount&gt;
+				&lt;RetryWait Behavior="WaitForReboot"&gt;P1D&lt;/RetryWait&gt;
+				&lt;HasTemporalDistribution&gt;false&lt;/HasTemporalDistribution&gt;
+				&lt;ContinueOnErrors&gt;true&lt;/ContinueOnErrors&gt;
+				&lt;PostActionBehavior Behavior="Nothing"&gt;&lt;/PostActionBehavior&gt;
+				&lt;IsOffer&gt;false&lt;/IsOffer&gt;
+			&lt;/Settings&gt;
+			&lt;SettingsLocks&gt;
+				&lt;ActionUITitle&gt;false&lt;/ActionUITitle&gt;
+				&lt;PreActionShowUI&gt;false&lt;/PreActionShowUI&gt;
+				&lt;PreAction&gt;
+					&lt;Text&gt;false&lt;/Text&gt;
+					&lt;AskToSaveWork&gt;false&lt;/AskToSaveWork&gt;
+					&lt;ShowActionButton&gt;false&lt;/ShowActionButton&gt;
+					&lt;ShowCancelButton&gt;false&lt;/ShowCancelButton&gt;
+					&lt;DeadlineBehavior&gt;false&lt;/DeadlineBehavior&gt;
+					&lt;ShowConfirmation&gt;false&lt;/ShowConfirmation&gt;
+				&lt;/PreAction&gt;
+				&lt;HasRunningMessage&gt;false&lt;/HasRunningMessage&gt;
+				&lt;RunningMessage&gt;
+					&lt;Text&gt;false&lt;/Text&gt;
+				&lt;/RunningMessage&gt;
+				&lt;TimeRange&gt;false&lt;/TimeRange&gt;
+				&lt;StartDateTimeOffset&gt;false&lt;/StartDateTimeOffset&gt;
+				&lt;EndDateTimeOffset&gt;false&lt;/EndDateTimeOffset&gt;
+				&lt;DayOfWeekConstraint&gt;false&lt;/DayOfWeekConstraint&gt;
+				&lt;ActiveUserRequirement&gt;false&lt;/ActiveUserRequirement&gt;
+				&lt;ActiveUserType&gt;false&lt;/ActiveUserType&gt;
+				&lt;Whose&gt;false&lt;/Whose&gt;
+				&lt;PreActionCacheDownload&gt;false&lt;/PreActionCacheDownload&gt;
+				&lt;Reapply&gt;false&lt;/Reapply&gt;
+				&lt;ReapplyLimit&gt;false&lt;/ReapplyLimit&gt;
+				&lt;RetryCount&gt;false&lt;/RetryCount&gt;
+				&lt;RetryWait&gt;false&lt;/RetryWait&gt;
+				&lt;TemporalDistribution&gt;false&lt;/TemporalDistribution&gt;
+				&lt;ContinueOnErrors&gt;false&lt;/ContinueOnErrors&gt;
+				&lt;PostActionBehavior&gt;
+					&lt;Behavior&gt;false&lt;/Behavior&gt;
+					&lt;AllowCancel&gt;false&lt;/AllowCancel&gt;
+					&lt;Deadline&gt;false&lt;/Deadline&gt;
+					&lt;Title&gt;false&lt;/Title&gt;
+					&lt;Text&gt;false&lt;/Text&gt;
+				&lt;/PostActionBehavior&gt;
+				&lt;IsOffer&gt;false&lt;/IsOffer&gt;
+				&lt;AnnounceOffer&gt;false&lt;/AnnounceOffer&gt;
+				&lt;OfferCategory&gt;false&lt;/OfferCategory&gt;
+				&lt;OfferDescriptionHTML&gt;false&lt;/OfferDescriptionHTML&gt;
+			&lt;/SettingsLocks&gt;
+		&lt;/DefaultAction&gt;
+	&lt;/Fixlet&gt;
+&lt;/BES&gt;
+EOF
+
+delete "{parameter "folder"}\fixlet.xml"
+copy __createfile "{parameter "folder"}\fixlet.xml"
+
+// Build XML to deploy a new action from the fixlet
+// Change site and targets to meet your environment and deployment needs
+createfile until EOF
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;BES xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="BES.xsd"&gt;
+ &lt;SourcedFixletAction&gt;
+   &lt;SourceFixlet&gt;
+     &lt;Sitename&gt;My Windows Support&lt;/Sitename&gt;
+     &lt;FixletID&gt;{parameter "fixletid"}&lt;/FixletID&gt;
+     &lt;Action&gt;Action1&lt;/Action&gt;
+   &lt;/SourceFixlet&gt;
+   &lt;Target&gt;
+     &lt;ComputerID&gt;9414151&lt;/ComputerID&gt;
+   &lt;/Target&gt;
+ &lt;/SourcedFixletAction&gt;
+&lt;/BES&gt;
+EOF
+
+delete "{parameter "folder"}\action.xml"
+copy __createfile "{parameter "folder"}\action.xml"
+
+
+// Update the fixlet using IEM.exe
+parameter "iem" = "{parent folder of folder (value of setting "_BESRelay_HTTPServer_ServerRootPath" of client) as string &amp; "\IEM CLI\iem.exe"}" 
+waithidden cmd.exe /c ""{parameter "iem"}" login -q --server={parameter "besserver"} --user={parameter "secret2" of action} --password={parameter "secret" of action} --masthead="{pathname of folder of main gather service &amp; "\actionsite.afxm"}""
+waithidden cmd.exe /c ""{parameter "iem"}" PUT "{parameter "folder"}\fixlet.xml" /fixlet/custom/My%20Windows%20Support/{parameter "fixletid"} -q"
+waithidden cmd.exe /c ""{parameter "iem"}" POST "{parameter "folder"}\action.xml" actions -q"
+
+// Update current version maker for next execution
+delete "{(parameter "folder") &amp; "\currentversion.txt"}"
+copy "{(parameter "folder") &amp; "\latestversion.txt"}" "{(parameter "folder") &amp; "\currentversion.txt"}"
+
+endif
+</ActionScript>
+		</DefaultAction>
+	</Task>
+</BES>
